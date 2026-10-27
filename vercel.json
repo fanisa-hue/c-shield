@@ -1,7 +1,7 @@
 {
     "version": 2,
     "framework": null,
-    "buildCommand": "npm run build",
+    "buildCommand": "npm run build && mkdir -p public/storage && cp -R database/seeders/assets/. public/storage/",
     "outputDirectory": "public",
     "functions": {
         "api/index.php": {
@@ -12,6 +12,7 @@
     "routes": [
         { "src": "/build/(.*)", "dest": "/build/$1" },
         { "src": "/interactive-video/(.*)", "dest": "/interactive-video/$1" },
+        { "src": "/storage/(.*)", "dest": "/storage/$1" },
         { "src": "/(favicon\\.ico|robots\\.txt)", "dest": "/$1" },
         { "src": "/(.*)", "dest": "/api/index.php" }
     ],
