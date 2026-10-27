@@ -1,0 +1,226 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Article;
+use App\Models\AssessmentAttempt;
+use App\Models\Webinar;
+use Illuminate\Support\Collection;
+
+class HomeController extends Controller
+{
+    private const LEVEL_ORDER = ['Sangat Rendah', 'Rendah', 'Cukup', 'Baik', 'Sangat Baik'];
+
+    private const GENDER_ORDER = ['Laki-laki', 'Perempuan'];
+
+    /** How many recent respondents the Pre vs Post comparison chart shows. */
+    private const COMPARISON_LIMIT = 50;
+
+    private const AGE_BRACKETS = [
+        '< 18' => [null, 17],
+        '18–25' => [18, 25],
+        '26–35' => [26, 35],
+        '36–45' => [36, 45],
+        '46–55' => [46, 55],
+        '56+' => [56, null],
+    ];
+
+    /**
+     * Display the public landing page.
+     */
+    public function index()
+    {
+        $latestArticles = Article::query()
+            ->where('is_published', true)
+            ->latest('published_at')
+            ->take(3)
+            ->get();
+
+        $upcomingWebinars = Webinar::query()
+            ->where('is_published', true)
+            ->where('webinar_date', '>=', now())
+            ->orderBy('webinar_date')
+            ->take(2)
+            ->get();
+
+        $currentYear = now()->year;
+
+        // The homepage diagram reflects final understanding, so it is built
+        // from Post-Assessment attempts (a "pre" attempt without its
+        // matching "post" attempt is a still-in-progress session and is
+        // intentionally excluded here).
+        $completedAttempts = AssessmentAttempt::query()
+            ->where('type', 'post')
+            ->whereNotNull('completed_at')
+            ->whereYear('completed_at', $currentYear)
+            ->with('user')
+            ->get()
+            ->filter(fn (AssessmentAttempt $attempt) => $attempt->user !== null);
+
+        $assessmentStats = [
+            'currentYear' => $currentYear,
+            'levelDistribution' => $this->levelDistribution($completedAttempts),
+            'scoreByGender' => $this->averageScoreByGender($completedAttempts),
+            'scoreByEducation' => $this->averageScoreByEducation($completedAttempts),
+            'scoreByAge' => $this->averageScoreByAge($completedAttempts),
+            'scoreByDomicile' => $this->averageScoreByDomicile($completedAttempts),
+            'prePostComparison' => $this->recentPrePostComparison(self::COMPARISON_LIMIT),
+        ];
+
+        $slides = collect();
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('dashboard_slides')) {
+                $slides = \App\Models\DashboardSlide::query()->active()->ordered()->get();
+            }
+        } catch (\Throwable $e) {
+            // Silently fallback if table not yet migrated
+        }
+
+        if ($slides->isEmpty()) {
+            $slides = collect([
+                (object) [
+                    'id' => 1,
+                    'title' => 'Cimahi Cyber Security Hub',
+                    'description' => 'Pusat informasi dan edukasi keamanan siber terpadu Kota Cimahi.',
+                    'image_url' => 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?auto=format&fit=crop&w=2200&q=82',
+                ],
+                (object) [
+                    'id' => 2,
+                    'title' => 'Infrastruktur Keamanan Digital',
+                    'description' => 'Meningkatkan ketahanan sistem dan data aparatur serta masyarakat.',
+                    'image_url' => 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=2200&q=82',
+                ],
+                (object) [
+                    'id' => 3,
+                    'title' => 'Edukasi & Kesadaran Siber',
+                    'description' => 'Tingkatkan kesadaran keamanan digital melalui materi interaktif dan self-assessment.',
+                    'image_url' => 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=2200&q=82',
+                ],
+            ]);
+        }
+
+        return view('user.home', compact('latestArticles', 'upcomingWebinars', 'assessmentStats', 'slides'));
+    }
+
+    /**
+     * Pre vs Post scores of the most recent respondents who finished both,
+     * oldest first, plus their average scores.
+     */
+    private function recentPrePostComparison(int $limit): array
+    {
+        $posts = AssessmentAttempt::query()
+            ->where('type', 'post')
+            ->whereNotNull('completed_at')
+            ->latest('completed_at')
+            ->take($limit)
+            ->get(['assessment_user_id', 'score']);
+
+        $preScores = AssessmentAttempt::query()
+            ->where('type', 'pre')
+            ->whereNotNull('completed_at')
+            ->whereIn('assessment_user_id', $posts->pluck('assessment_user_id'))
+            ->pluck('score', 'assessment_user_id');
+
+        $pairs = $posts
+            ->filter(fn (AssessmentAttempt $post) => $preScores->has($post->assessment_user_id))
+            ->reverse()
+            ->values()
+            ->map(fn (AssessmentAttempt $post) => [
+                'pre' => (int) round((float) $preScores[$post->assessment_user_id]),
+                'post' => (int) round((float) $post->score),
+            ]);
+
+        return [
+            'pairs' => $pairs,
+            'averagePre' => $pairs->isEmpty() ? 0 : round($pairs->avg('pre'), 1),
+            'averagePost' => $pairs->isEmpty() ? 0 : round($pairs->avg('post'), 1),
+        ];
+    }
+
+    /**
+     * Count of completed attempts per awareness level (fixed order), used
+     * for the "Persentase Hasil Assessment" chart.
+     */
+    private function levelDistribution(Collection $attempts): Collection
+    {
+        return collect(self::LEVEL_ORDER)->map(fn (string $level) => [
+            'label' => $level,
+            'count' => $attempts->where('level', $level)->count(),
+        ]);
+    }
+
+    /**
+     * Average score per gender, in a fixed order.
+     */
+    private function averageScoreByGender(Collection $attempts): Collection
+    {
+        return collect(self::GENDER_ORDER)
+            ->map(function (string $gender) use ($attempts) {
+                $group = $attempts->filter(fn (AssessmentAttempt $attempt) => $attempt->user->gender === $gender);
+
+                return [
+                    'label' => $gender,
+                    'average' => $group->isEmpty() ? 0 : round((float) $group->avg('score'), 1),
+                    'count' => $group->count(),
+                ];
+            })
+            ->filter(fn (array $row) => $row['count'] > 0)
+            ->values();
+    }
+
+    /**
+     * Average score per education group, most common group first.
+     */
+    private function averageScoreByEducation(Collection $attempts): Collection
+    {
+        return $attempts->groupBy(fn (AssessmentAttempt $attempt) => $attempt->user->education)
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'average' => round((float) $group->avg('score'), 1),
+                'count' => $group->count(),
+            ])
+            ->sortByDesc('count')
+            ->values();
+    }
+
+    /**
+     * Average score per age bracket, in a fixed youngest-to-oldest order.
+     */
+    private function averageScoreByAge(Collection $attempts): Collection
+    {
+        return collect(self::AGE_BRACKETS)
+            ->map(function (array $range, string $label) use ($attempts) {
+                [$min, $max] = $range;
+
+                $group = $attempts->filter(function (AssessmentAttempt $attempt) use ($min, $max) {
+                    $age = $attempt->user->age;
+
+                    return ($min === null || $age >= $min) && ($max === null || $age <= $max);
+                });
+
+                return [
+                    'label' => $label,
+                    'average' => $group->isEmpty() ? 0 : round((float) $group->avg('score'), 1),
+                    'count' => $group->count(),
+                ];
+            })
+            ->filter(fn (array $row) => $row['count'] > 0)
+            ->values();
+    }
+
+    /**
+     * Average score for the most-represented domicile groups.
+     */
+    private function averageScoreByDomicile(Collection $attempts): Collection
+    {
+        return $attempts->groupBy(fn (AssessmentAttempt $attempt) => $attempt->user->domicile)
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'average' => round((float) $group->avg('score'), 1),
+                'count' => $group->count(),
+            ])
+            ->sortByDesc('count')
+            ->take(8)
+            ->values();
+    }
+}

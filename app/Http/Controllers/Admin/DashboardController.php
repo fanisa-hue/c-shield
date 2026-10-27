@@ -1,0 +1,201 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Article;
+use App\Models\AssessmentAttempt;
+use App\Models\AssessmentQuestion;
+use App\Models\AssessmentUser;
+use App\Models\Flyer;
+use App\Models\Video;
+use App\Models\Webinar;
+use Illuminate\Support\Collection;
+
+class DashboardController extends Controller
+{
+    private const LEVEL_ORDER = ['Sangat Rendah', 'Rendah', 'Cukup', 'Baik', 'Sangat Baik'];
+
+    private const GENDER_ORDER = ['Laki-laki', 'Perempuan'];
+
+    private const AGE_BRACKETS = [
+        '< 18' => [null, 17],
+        '18–25' => [18, 25],
+        '26–35' => [26, 35],
+        '36–45' => [36, 45],
+        '46–55' => [46, 55],
+        '56+' => [56, null],
+    ];
+
+    /**
+     * Display the admin dashboard.
+     */
+    public function index()
+    {
+        $stats = [
+            [
+                'label' => 'Artikel',
+                'total' => Article::count(),
+                'published' => Article::where('is_published', true)->count(),
+            ],
+            [
+                'label' => 'Video',
+                'total' => Video::count(),
+                'published' => Video::where('is_published', true)->count(),
+            ],
+            [
+                'label' => 'Flyer',
+                'total' => Flyer::count(),
+                'published' => Flyer::where('is_published', true)->count(),
+            ],
+            [
+                'label' => 'Webinar',
+                'total' => Webinar::count(),
+                'published' => Webinar::where('is_published', true)->count(),
+            ],
+        ];
+
+        $assessmentStats = [
+            'participants' => AssessmentUser::count(),
+            'attempts' => AssessmentAttempt::count(),
+            'questions' => AssessmentQuestion::count(),
+        ];
+
+        $currentYear = now()->year;
+
+        $completedAttempts = AssessmentAttempt::query()
+            ->whereNotNull('completed_at')
+            ->whereYear('completed_at', $currentYear)
+            ->with('user')
+            ->get()
+            ->filter(fn (AssessmentAttempt $attempt) => $attempt->user !== null);
+
+        return view('admin.dashboard', [
+            'stats' => $stats,
+            'assessmentStats' => $assessmentStats,
+            'currentYear' => $currentYear,
+            'levelDistribution' => $this->levelDistribution($completedAttempts),
+            'scoreByGender' => $this->averageScoreByGender($completedAttempts),
+            'scoreByEducation' => $this->averageScoreByEducation($completedAttempts),
+            'scoreByAge' => $this->averageScoreByAge($completedAttempts),
+            'scoreByDomicile' => $this->averageScoreByDomicile($completedAttempts),
+            'prePostParticipation' => $this->prePostParticipation($currentYear),
+        ]);
+    }
+
+    /**
+     * Of the respondents who completed a Pre-Assessment in the given year:
+     * how many also completed the Post-Assessment versus only the Pre, and
+     * the average Pre/Post scores of those who completed both.
+     */
+    private function prePostParticipation(int $year): array
+    {
+        $preScores = AssessmentAttempt::query()
+            ->where('type', 'pre')
+            ->whereNotNull('completed_at')
+            ->whereYear('completed_at', $year)
+            ->pluck('score', 'assessment_user_id');
+
+        $postScores = AssessmentAttempt::query()
+            ->where('type', 'post')
+            ->whereNotNull('completed_at')
+            ->whereIn('assessment_user_id', $preScores->keys())
+            ->pluck('score', 'assessment_user_id');
+
+        $bothPreScores = $preScores->only($postScores->keys());
+
+        return [
+            'both' => $postScores->count(),
+            'onlyPre' => $preScores->count() - $postScores->count(),
+            'averagePre' => $bothPreScores->isEmpty() ? 0 : round((float) $bothPreScores->avg(), 1),
+            'averagePost' => $postScores->isEmpty() ? 0 : round((float) $postScores->avg(), 1),
+        ];
+    }
+
+    /**
+     * Count of completed attempts per awareness level (fixed order), used
+     * for the "Persentase Hasil Assessment" chart.
+     */
+    private function levelDistribution(Collection $attempts): Collection
+    {
+        return collect(self::LEVEL_ORDER)->map(fn (string $level) => [
+            'label' => $level,
+            'count' => $attempts->where('level', $level)->count(),
+        ]);
+    }
+
+    /**
+     * Average score per gender, in a fixed order.
+     */
+    private function averageScoreByGender(Collection $attempts): Collection
+    {
+        return collect(self::GENDER_ORDER)
+            ->map(function (string $gender) use ($attempts) {
+                $group = $attempts->filter(fn (AssessmentAttempt $attempt) => $attempt->user->gender === $gender);
+
+                return [
+                    'label' => $gender,
+                    'average' => $group->isEmpty() ? 0 : round((float) $group->avg('score'), 1),
+                    'count' => $group->count(),
+                ];
+            })
+            ->filter(fn (array $row) => $row['count'] > 0)
+            ->values();
+    }
+
+    /**
+     * Average score per education group, most common group first.
+     */
+    private function averageScoreByEducation(Collection $attempts): Collection
+    {
+        return $attempts->groupBy(fn (AssessmentAttempt $attempt) => $attempt->user->education)
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'average' => round((float) $group->avg('score'), 1),
+                'count' => $group->count(),
+            ])
+            ->sortByDesc('count')
+            ->values();
+    }
+
+    /**
+     * Average score per age bracket, in a fixed youngest-to-oldest order.
+     */
+    private function averageScoreByAge(Collection $attempts): Collection
+    {
+        return collect(self::AGE_BRACKETS)
+            ->map(function (array $range, string $label) use ($attempts) {
+                [$min, $max] = $range;
+
+                $group = $attempts->filter(function (AssessmentAttempt $attempt) use ($min, $max) {
+                    $age = $attempt->user->age;
+
+                    return ($min === null || $age >= $min) && ($max === null || $age <= $max);
+                });
+
+                return [
+                    'label' => $label,
+                    'average' => $group->isEmpty() ? 0 : round((float) $group->avg('score'), 1),
+                    'count' => $group->count(),
+                ];
+            })
+            ->filter(fn (array $row) => $row['count'] > 0)
+            ->values();
+    }
+
+    /**
+     * Average score for the most-represented domicile groups.
+     */
+    private function averageScoreByDomicile(Collection $attempts): Collection
+    {
+        return $attempts->groupBy(fn (AssessmentAttempt $attempt) => $attempt->user->domicile)
+            ->map(fn (Collection $group, string $label) => [
+                'label' => $label,
+                'average' => round((float) $group->avg('score'), 1),
+                'count' => $group->count(),
+            ])
+            ->sortByDesc('count')
+            ->take(8)
+            ->values();
+    }
+}

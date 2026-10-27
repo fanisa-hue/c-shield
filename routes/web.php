@@ -1,0 +1,107 @@
+<?php
+
+use App\Http\Controllers\Admin\AuthController as AdminAuthController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\ArticleController as AdminArticleController;
+use App\Http\Controllers\Admin\VideoController as AdminVideoController;
+use App\Http\Controllers\Admin\FlyerController as AdminFlyerController;
+use App\Http\Controllers\Admin\WebinarController as AdminWebinarController;
+use App\Http\Controllers\Admin\AssessmentController as AdminAssessmentController;
+use App\Http\Controllers\Admin\LearningMaterialController as AdminLearningMaterialController;
+use App\Http\Controllers\Admin\ReportController as AdminReportController;
+use App\Http\Controllers\Admin\SurveyQuestionController as AdminSurveyQuestionController;
+use App\Http\Controllers\Admin\WebinarRegistrationController as AdminWebinarRegistrationController;
+use App\Http\Controllers\Admin\EditDashboardController as AdminEditDashboardController;
+use App\Http\Controllers\ArticleController;
+use App\Http\Controllers\FlyerController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\SelfAssessmentController;
+use App\Http\Controllers\SurveyController;
+use App\Http\Controllers\VideoController;
+use App\Http\Controllers\WebinarController;
+use App\Http\Controllers\WebinarRegistrationController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', [HomeController::class, 'index'])->name('home');
+
+Route::get('/artikel', [ArticleController::class, 'index'])->name('articles.index');
+Route::get('/artikel/{article:slug}', [ArticleController::class, 'show'])->name('articles.show');
+
+Route::get('/video', [VideoController::class, 'index'])->name('videos.index');
+Route::get('/video/{video:slug}', [VideoController::class, 'show'])->name('videos.show');
+
+Route::get('/flyer', [FlyerController::class, 'index'])->name('flyers.index');
+Route::get('/flyer/{flyer}', [FlyerController::class, 'show'])->name('flyers.show');
+
+Route::post('/survei', [SurveyController::class, 'store'])->name('survey.store');
+
+Route::get('/webinar', [WebinarController::class, 'index'])->name('webinars.index');
+Route::post('/webinar/{webinar}/register', [WebinarRegistrationController::class, 'store'])->name('webinars.register');
+
+Route::prefix('self-assessment')->name('self-assessment.')->group(function () {
+    Route::get('/', [SelfAssessmentController::class, 'index'])->name('index');
+    Route::post('/', [SelfAssessmentController::class, 'start'])->name('start');
+    Route::get('/mulai', [SelfAssessmentController::class, 'create'])->name('create');
+    Route::post('/mulai', [SelfAssessmentController::class, 'store'])->name('store');
+    Route::get('/pre', [SelfAssessmentController::class, 'preQuiz'])->name('pre.quiz');
+    Route::post('/pre', [SelfAssessmentController::class, 'storePreQuiz'])->name('pre.store');
+    Route::get('/pre/hasil', [SelfAssessmentController::class, 'preResult'])->name('pre.result');
+    Route::get('/materi', [SelfAssessmentController::class, 'materi'])->name('materi');
+    Route::post('/materi/lanjut', [SelfAssessmentController::class, 'materiLanjut'])->name('materi.lanjut');
+    Route::get('/post', [SelfAssessmentController::class, 'postQuiz'])->name('post.quiz');
+    Route::post('/post', [SelfAssessmentController::class, 'storePostQuiz'])->name('post.store');
+    Route::get('/post/hasil', [SelfAssessmentController::class, 'postResult'])->name('post.result');
+    Route::get('/perbandingan', [SelfAssessmentController::class, 'comparison'])->name('comparison');
+    Route::post('/ulangi', [SelfAssessmentController::class, 'restart'])->name('restart');
+});
+
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::middleware('guest:admin')->group(function () {
+        Route::get('/login', [AdminAuthController::class, 'showLoginForm'])->name('login');
+        Route::get('/login/captcha', [AdminAuthController::class, 'captchaImage'])
+            ->middleware('throttle:30,1')
+            ->name('captcha.image');
+        Route::post('/login', [AdminAuthController::class, 'login'])
+            ->middleware('throttle:5,1')
+            ->name('login.attempt');
+    });
+
+    Route::middleware('auth:admin')->group(function () {
+        Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
+        Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+        Route::resource('articles', AdminArticleController::class)->parameters(['articles' => 'item'])->except('show');
+        Route::resource('videos', AdminVideoController::class)->parameters(['videos' => 'item'])->except('show');
+        Route::resource('flyers', AdminFlyerController::class)->parameters(['flyers' => 'item'])->except('show');
+        Route::resource('webinars', AdminWebinarController::class)->parameters(['webinars' => 'item'])->except('show');
+        Route::get('assessments', [AdminAssessmentController::class, 'index'])->name('assessments.index');
+        Route::post('assessments/questions', [AdminAssessmentController::class, 'storeQuestion'])->name('assessments.questions.store');
+        Route::put('assessments/questions/{question}', [AdminAssessmentController::class, 'updateQuestion'])->name('assessments.questions.update');
+        Route::delete('assessments/questions/{question}', [AdminAssessmentController::class, 'destroyQuestion'])->name('assessments.questions.destroy');
+        Route::get('materi-belajar', [AdminLearningMaterialController::class, 'index'])->name('learning-material.index');
+        Route::put('materi-belajar', [AdminLearningMaterialController::class, 'update'])->name('learning-material.update');
+        Route::get('survey-questions', [AdminSurveyQuestionController::class, 'index'])->name('survey-questions.index');
+        Route::post('survey-questions', [AdminSurveyQuestionController::class, 'store'])->name('survey-questions.store');
+        Route::put('survey-questions/{question}', [AdminSurveyQuestionController::class, 'update'])->name('survey-questions.update');
+        Route::delete('survey-questions/{question}', [AdminSurveyQuestionController::class, 'destroy'])->name('survey-questions.destroy');
+        Route::get('reports', [AdminReportController::class, 'index'])->name('reports.index');
+        Route::get('reports/export-assessment', [AdminReportController::class, 'exportAssessment'])->name('reports.export-assessment');
+        Route::get('reports/export-webinar', [AdminReportController::class, 'exportWebinarRegistrations'])->name('reports.export-webinar');
+
+        Route::get('webinar-registrations', [AdminWebinarRegistrationController::class, 'index'])->name('webinar-registrations.index');
+        Route::post('webinar-registrations/{webinar}/send-whatsapp', [AdminWebinarRegistrationController::class, 'sendWhatsApp'])->name('webinar-registrations.send-whatsapp');
+        Route::post('webinar-registrations/{registration}/send-single', [AdminWebinarRegistrationController::class, 'sendSingle'])->name('webinar-registrations.send-single');
+        Route::post('webinar-registrations/{registration}/toggle-status', [AdminWebinarRegistrationController::class, 'toggleStatus'])->name('webinar-registrations.toggle-status');
+        Route::get('webinar-registrations/{webinar}/export', [AdminWebinarRegistrationController::class, 'export'])->name('webinar-registrations.export');
+
+        // Edit Dashboard (Logo & Slide Hero)
+        Route::get('edit-dashboard', [AdminEditDashboardController::class, 'index'])->name('edit-dashboard.index');
+        Route::post('edit-dashboard/logo', [AdminEditDashboardController::class, 'updateLogo'])->name('edit-dashboard.logo');
+        Route::post('edit-dashboard/settings', [AdminEditDashboardController::class, 'updateLogo'])->name('edit-dashboard.settings');
+        Route::post('edit-dashboard/reset-logo', [AdminEditDashboardController::class, 'resetLogo'])->name('edit-dashboard.reset-logo');
+        Route::post('edit-dashboard/slides', [AdminEditDashboardController::class, 'storeSlide'])->name('edit-dashboard.slides.store');
+        Route::put('edit-dashboard/slides/{slide}', [AdminEditDashboardController::class, 'updateSlide'])->name('edit-dashboard.slides.update');
+        Route::delete('edit-dashboard/slides/{slide}', [AdminEditDashboardController::class, 'destroySlide'])->name('edit-dashboard.slides.destroy');
+        Route::patch('edit-dashboard/slides/{slide}/toggle', [AdminEditDashboardController::class, 'toggleSlide'])->name('edit-dashboard.slides.toggle');
+        Route::post('edit-dashboard/slides/reorder', [AdminEditDashboardController::class, 'reorderSlides'])->name('edit-dashboard.slides.reorder');
+    });
+});

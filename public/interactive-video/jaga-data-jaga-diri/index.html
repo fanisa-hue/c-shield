@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive security awareness video component">
+    <title>Video Interaktif Keamanan Digital</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <main class="player-shell">
+        <section class="video-player" id="videoPlayer" aria-label="Simulasi interaktif keamanan digital">
+            <div class="scene-stage" id="sceneStage" >
+                <div class="scene-background"></div>
+                <div class="scene-content" id="sceneContent"></div>
+                <div class="scene-caption" id="sceneCaption"></div>
+                <div class="assessment-overlay" id="assessmentOverlay" hidden>
+                    <div class="assessment-panel">
+                        <div class="assessment-topline">
+                            <span class="assessment-label"><span class="pulse-dot"></span> Video dijeda</span>
+                            <span class="question-count" id="questionCount">Pertanyaan 1 dari 5</span>
+                        </div>
+                        <h2 id="questionText"></h2>
+                        <p class="question-context" id="questionContext"></p>
+                        <div class="answer-list" id="answerList" role="group" aria-label="Pilih Aman atau Berisiko"></div>
+                        <div class="feedback" id="feedback" role="status" hidden>
+                            <span class="feedback-icon" id="feedbackIcon"></span>
+                            <div><strong id="feedbackTitle"></strong>
+                                <p id="feedbackText"></p>
+                            </div>
+                        </div>
+                        <button class="primary-button continue-button" id="continueButton" type="button"
+                            disabled>Lanjutkan Video <span aria-hidden="true">&#8594;</span></button>
+                    </div>
+                </div>
+                <div class="results-panel" id="resultsPanel" hidden>
+                    <div class="results-icon" aria-hidden="true">&#10003;</div>
+                    <p class="result-kicker">LATIHAN SELESAI</p>
+                    <h2>Kenali risiko.<br><em>Lindungi dirimu.</em></h2>
+                    <div class="score-line"><strong id="scoreValue">0 / 5</strong><span id="percentageValue">0%</span>
+                    </div>
+                    <div class="result-stats">
+                        <div><span class="stat-value correct" id="correctValue">0</span><span>Benar</span></div>
+                        <div><span class="stat-value incorrect" id="incorrectValue">0</span><span>Kurang tepat</span></div>
+                    </div>
+                    <p class="result-summary" id="resultSummary"></p>
+                    <button class="primary-button restart-button" id="restartButton" type="button">&#8635; Ulangi latihan</button>
+                </div>
+            </div>
+            <div class="player-controls" id="playerControls">
+                <div class="timeline-row">
+                    <span class="time-label" id="currentTime">00:00</span>
+                    <input class="progress-range" id="progressRange" type="range" min="0" max="100" value="0" step="0.1"
+                        disabled aria-label="Progres animasi">
+                    <span class="time-label" id="duration">01:00</span>
+                </div>
+                <div class="control-row">
+                    <button class="control-button play-button" id="playButton" type="button" aria-label="Putar animasi"
+                        title="Putar">&#9654;</button>
+                    <button class="control-button" id="muteButton" type="button" aria-label="Matikan narasi" aria-pressed="false" title="Matikan narasi">&#128266;</button>
+                    <label class="voice-label" for="voiceSelect">Narator</label>
+                    <select id="voiceSelect" class="voice-select" aria-label="Pilih suara narator"><option>Memuat suara...</option></select>
+                    <span class="demo-label" id="voiceStatus" role="status"></span>
+                    <span class="control-spacer"></span>
+                    <button class="control-button" id="fullscreenButton" type="button" aria-label="Layar penuh"
+                        title="Layar penuh">&#9974;</button>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script src="narration.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

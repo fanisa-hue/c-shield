@@ -1,0 +1,270 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Article;
+use App\Models\AssessmentQuestion;
+use App\Models\Flyer;
+use App\Models\LearningMaterial;
+use App\Models\SurveyQuestion;
+use App\Models\Video;
+use App\Models\Webinar;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+class ExportContentSeeders extends Command
+{
+    protected $signature = 'content:export-seeders {--only= : Export only flyers, videos, articles, or webinars}';
+
+    protected $description = 'Ekspor data flyer, video, artikel, webinar, materi belajar, soal assessment, dan pertanyaan survei dari database saat ini (beserta file gambar/videonya) ke database/seeders, supaya bisa dibagikan lewat git dan dimasukkan ulang lewat php artisan db:seed';
+
+    protected string $dataPath;
+
+    protected string $assetsPath;
+
+    public function handle(): int
+    {
+        $exports = [
+            'flyers' => 'exportFlyers',
+            'videos' => 'exportVideos',
+            'articles' => 'exportArticles',
+            'webinars' => 'exportWebinars',
+        ];
+        $only = $this->option('only');
+        if ($only !== null && ! isset($exports[$only])) {
+            $this->error('--only must be flyers, videos, articles, or webinars.');
+
+            return self::FAILURE;
+        }
+
+        $this->dataPath = database_path('seeders/data');
+        $this->assetsPath = database_path('seeders/assets');
+
+        File::ensureDirectoryExists($this->dataPath);
+        File::ensureDirectoryExists($this->assetsPath);
+
+        try {
+            foreach ($only === null ? $exports : [$exports[$only]] as $method) {
+                $this->$method();
+            }
+        } catch (\RuntimeException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->newLine();
+        $this->info('Selesai. Sekarang jalankan: git add database/seeders && git commit && git push');
+
+        return self::SUCCESS;
+    }
+
+    protected function exportFlyers(): void
+    {
+        $flyers = Flyer::with('images')->get()->map(function (Flyer $flyer) {
+            return [
+                'title' => $flyer->title,
+                'description' => $flyer->description,
+                'source_url' => $flyer->source_url,
+                'is_published' => $flyer->is_published,
+                'published_at' => optional($flyer->published_at)->toDateTimeString(),
+                'images' => $flyer->images->map(fn ($image) => [
+                    'image' => $this->copyToAssets($image->image),
+                    'sort_order' => $image->sort_order,
+                ])->filter(fn ($image) => $image['image'] !== null)->values()->all(),
+            ];
+        })->all();
+
+        $this->writeJson('flyers.json', $flyers);
+        $this->info('Flyer: '.count($flyers).' data diekspor.');
+    }
+
+    protected function exportVideos(): void
+    {
+        $videos = Video::all()->map(function (Video $video) {
+            return [
+                'title' => $video->title,
+                'slug' => $video->slug,
+                'description' => $video->description,
+                'video_url' => $video->video_url,
+                'video_path' => $this->copyToAssets($video->video_path),
+                'thumbnail' => $this->copyToAssets($video->thumbnail),
+                'is_published' => $video->is_published,
+                'published_at' => optional($video->published_at)->toDateTimeString(),
+            ];
+        })->all();
+
+        $this->writeJson('videos.json', $videos);
+        $this->info('Video: '.count($videos).' data diekspor.');
+    }
+
+    protected function exportArticles(): void
+    {
+        $articles = Article::all()->map(function (Article $article) {
+            return [
+                'title' => $article->title,
+                'slug' => $article->slug,
+                'excerpt' => $article->excerpt,
+                'content' => $article->content,
+                'source_url' => $article->source_url,
+                'cover_image' => $this->copyToAssets($article->cover_image),
+                'is_published' => $article->is_published,
+                'published_at' => optional($article->published_at)->toDateTimeString(),
+            ];
+        })->all();
+
+        $this->writeJson('articles.json', $articles);
+        $this->info('Artikel: '.count($articles).' data diekspor.');
+    }
+
+    protected function exportWebinars(): void
+    {
+        $webinars = Webinar::all()->map(function (Webinar $webinar) {
+            return [
+                'title' => $webinar->title,
+                'description' => $webinar->description,
+                'speaker' => $webinar->speaker,
+                'webinar_date' => optional($webinar->webinar_date)->toDateTimeString(),
+                'platform' => $webinar->platform,
+                'registration_url' => $webinar->registration_url,
+                'poster_image' => $this->copyToAssets($webinar->poster_image),
+                'is_published' => $webinar->is_published,
+            ];
+        })->all();
+
+        $this->writeJson('webinars.json', $webinars);
+        $this->info('Webinar: '.count($webinars).' data diekspor.');
+    }
+
+    protected function exportLearningMaterial(): void
+    {
+        $material = LearningMaterial::current();
+
+        $data = $material ? [
+            'title' => $material->title,
+            'description' => $material->description,
+            'file_path' => $this->copyToAssets($material->file_path),
+            'file_type' => $material->file_type,
+            'original_name' => $material->original_name,
+        ] : null;
+
+        $this->writeJson('learning_material.json', $data);
+        $this->info('Materi belajar: '.($data ? 1 : 0).' data diekspor.');
+    }
+
+    protected function exportAssessmentQuestions(): void
+    {
+        $questions = AssessmentQuestion::with(['options' => fn ($query) => $query->orderBy('order')])
+            ->orderBy('order')
+            ->get()
+            ->map(fn (AssessmentQuestion $question) => [
+                'question' => $question->question,
+                'order' => $question->order,
+                'options' => $question->options->map(fn ($option) => [
+                    'text' => $option->option_text,
+                    'correct' => $option->is_correct,
+                    'order' => $option->order,
+                ])->all(),
+            ])->all();
+
+        $this->writeJson('assessment_questions.json', $questions);
+        $this->info('Soal assessment: '.count($questions).' data diekspor.');
+    }
+
+    protected function exportSurveyQuestions(): void
+    {
+        $questions = SurveyQuestion::orderBy('sort_order')->get()->map(fn (SurveyQuestion $question) => [
+            'question' => $question->question,
+            'sort_order' => $question->sort_order,
+        ])->all();
+
+        $this->writeJson('survey_questions.json', $questions);
+        $this->info('Pertanyaan survei: '.count($questions).' data diekspor.');
+    }
+
+    /**
+     * Copy an uploaded file from the public disk into the git-tracked
+     * database/seeders/assets folder, mirroring its relative path, so the
+     * actual file (not just its DB path) is committed and can be restored
+     * on another machine by the seeder. PNG/JPEG images are downscaled and
+     * recompressed (same format and extension) to keep the git repo small;
+     * the original file in storage/app/public is never modified.
+     */
+    protected function copyToAssets(?string $relativePath): ?string
+    {
+        if (! $relativePath || Str::startsWith($relativePath, ['http://', 'https://'])) {
+            return $relativePath;
+        }
+
+        if (! Storage::disk('public')->exists($relativePath)) {
+            throw new \RuntimeException("Cannot export missing public media: {$relativePath}. Restore the original file before exporting; this content JSON was not replaced.");
+        }
+
+        $source = Storage::disk('public')->path($relativePath);
+        $destination = $this->assetsPath.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+        File::ensureDirectoryExists(dirname($destination));
+
+        if (! $this->compressImage($source, $destination)) {
+            if (! File::copy($source, $destination)) {
+                throw new \RuntimeException("Cannot copy exported media: {$relativePath}");
+            }
+        }
+
+        return $relativePath;
+    }
+
+    /**
+     * Downscale (max 1000px wide, never upscaled) and recompress a PNG or
+     * JPEG into $destination. Returns false for any other file type or if
+     * GD cannot read the file, so the caller can fall back to a plain copy.
+     */
+    protected function compressImage(string $source, string $destination): bool
+    {
+        $extension = strtolower(pathinfo($source, PATHINFO_EXTENSION));
+
+        $image = match ($extension) {
+            'png' => @imagecreatefrompng($source),
+            'jpg', 'jpeg' => @imagecreatefromjpeg($source),
+            default => false,
+        };
+
+        if (! $image) {
+            return false;
+        }
+
+        $maxWidth = 1000;
+        $width = imagesx($image);
+        $height = imagesy($image);
+
+        if ($width > $maxWidth) {
+            $newHeight = (int) round($height * ($maxWidth / $width));
+            $resized = imagecreatetruecolor($maxWidth, $newHeight);
+            imagealphablending($resized, false);
+            imagesavealpha($resized, true);
+            imagecopyresampled($resized, $image, 0, 0, 0, 0, $maxWidth, $newHeight, $width, $height);
+            imagedestroy($image);
+            $image = $resized;
+        }
+
+        if ($extension === 'png') {
+            imagetruecolortopalette($image, false, 255);
+            $saved = imagepng($image, $destination, 9);
+        } else {
+            $saved = imagejpeg($image, $destination, 75);
+        }
+
+        imagedestroy($image);
+
+        return $saved;
+    }
+
+    protected function writeJson(string $filename, ?array $data): void
+    {
+        File::put(
+            $this->dataPath.DIRECTORY_SEPARATOR.$filename,
+            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+    }
+}

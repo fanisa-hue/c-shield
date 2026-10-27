@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@yield('title', 'Dashboard') &mdash; C-SHIELD Admin</title>
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232ab7ca'/%3E%3Cpath d='M12 5 7 7v3.5c0 3.2 2.1 5.6 5 6.5 2.9-.9 5-3.3 5-6.5V7l-5-2Z' stroke='%230b2545' stroke-width='1.4' stroke-linejoin='round' fill='%230b2545' fill-opacity='0.15'/%3E%3Cpath d='m9.7 11.3 1.4 1.4 3-3' stroke='%230b2545' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <style>
+        /* Keep all admin form controls visibly separated from the page. */
+        main input:not([type='checkbox']):not([type='radio']),
+        main textarea,
+        main select {
+            border: 1px solid #94a3b8;
+            background-color: #fff;
+            padding: .625rem .75rem;
+            outline: none;
+        }
+
+        main input[type='file'] {
+            border: 1px solid #94a3b8;
+            border-radius: .375rem;
+            padding: .4rem;
+        }
+
+        main input:not([type='checkbox']):not([type='radio']):focus,
+        main textarea:focus,
+        main select:focus {
+            border-color: #0f8fa0;
+            box-shadow: 0 0 0 3px rgba(42, 183, 202, .2);
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden bg-slate-50 font-sans text-navy-900 antialiased">
+
+    <div id="admin-sidebar-overlay" onclick="document.getElementById('admin-sidebar').classList.add('-translate-x-full'); this.classList.add('hidden')" class="fixed inset-0 z-30 hidden bg-navy-950/50 md:hidden"></div>
+
+    <aside id="admin-sidebar" class="fixed inset-y-0 left-0 z-40 flex h-screen w-64 -translate-x-full flex-col bg-navy-900 transition-transform duration-200 md:z-auto md:translate-x-0">
+        <div class="flex items-center gap-2.5 px-6 py-5">
+            @if (!empty($appLogoUrl))
+                <img src="{{ $appLogoUrl }}" alt="Logo" class="h-8 w-auto max-w-[130px] object-contain">
+            @else
+                <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-500 text-navy-950">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                        <path d="M12 2 4 5v6c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V5l-8-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.15"/>
+                        <path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+            @endif
+            <span class="font-heading text-base font-bold text-white">C-SHIELD Admin</span>
+        </div>
+
+        <nav class="mt-4 space-y-1 overflow-y-auto px-3">
+            <a href="{{ route('admin.dashboard') }}"
+               class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium {{ request()->routeIs('admin.dashboard') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 shrink-0">
+                    <path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6V11h-6v9Zm0-16v5h6V4h-6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+                Dashboard
+            </a>
+            <a href="{{ route('admin.edit-dashboard.index') }}"
+               class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium {{ request()->routeIs('admin.edit-dashboard.*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 shrink-0">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Edit Dashboard
+            </a>
+            @foreach (['articles' => 'Artikel', 'videos' => 'Video Edukasi', 'flyers' => 'Flyer', 'webinars' => 'Webinar', 'webinar-registrations' => 'Pendaftaran Webinar', 'assessments' => 'Self-Assessment', 'learning-material' => 'Materi Belajar', 'survey-questions' => 'Survei Kepuasan', 'reports' => 'Monitoring & Laporan'] as $section => $label)
+                <a href="{{ route('admin.'.$section.'.index') }}" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium {{ request()->routeIs('admin.'.$section.'.*') ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white' }}">{{ $label }}</a>
+            @endforeach
+        </nav>
+
+        <div class="mt-auto border-t border-white/10 px-3 py-4">
+            <form method="POST" action="{{ route('admin.logout') }}">
+                @csrf
+                <button type="submit" class="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white">
+                    Keluar
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <div class="ml-0 flex h-screen min-w-0 flex-1 flex-col md:ml-64">
+        <header class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+            <div class="flex items-center gap-3">
+                <button type="button"
+                        onclick="document.getElementById('admin-sidebar').classList.remove('-translate-x-full'); document.getElementById('admin-sidebar-overlay').classList.remove('hidden')"
+                        class="inline-flex items-center justify-center rounded-md p-2 text-slate-500 hover:bg-slate-100 md:hidden" aria-label="Buka menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
+                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <h1 class="font-heading text-lg font-bold text-navy-900">@yield('title', 'Dashboard')</h1>
+            </div>
+            <span class="text-sm text-slate-500">{{ auth('admin')->user()->name }}</span>
+        </header>
+
+        <main class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            @if (session('success')) <div class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ session('success') }}</div> @endif
+            @if ($errors->any()) <div class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">Periksa kembali isian yang ditandai.</div> @endif
+            @yield('content')
+        </main>
+    </div>
+
+    @stack('scripts')
+</body>
+</html>
