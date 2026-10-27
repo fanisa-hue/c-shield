@@ -1,0 +1,7 @@
+/node_modules
+/vendor
+/tests
+/docs
+/scripts
+*.zip
+.env
