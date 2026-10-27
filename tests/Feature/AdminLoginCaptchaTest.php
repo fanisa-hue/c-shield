@@ -150,7 +150,7 @@ class AdminLoginCaptchaTest extends TestCase
             'admin_login_captcha' => [
                 'answer_hash' => hash_hmac('sha256', $answer, (string) config('app.key')),
                 'expires_at' => $expiresAt,
-                'image' => base64_encode('test image'),
+                'answer' => encrypt($answer),
             ],
         ]);
     }

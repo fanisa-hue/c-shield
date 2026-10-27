@@ -27,10 +27,15 @@ class AdminLoginCaptcha
         }
 
         $challenge = $request->session()->get(self::SESSION_KEY);
-        $image = base64_decode($challenge['image'], true);
+        $answer = decrypt($challenge['answer']);
+
+        // Vercel's PHP runtime ships without GD, so fall back to an SVG image there.
+        [$image, $contentType] = extension_loaded('gd')
+            ? [$this->renderImage($answer), 'image/png']
+            : [$this->renderSvg($answer), 'image/svg+xml'];
 
         return response($image, 200, [
-            'Content-Type' => 'image/png',
+            'Content-Type' => $contentType,
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
             'X-Content-Type-Options' => 'nosniff',
@@ -69,7 +74,8 @@ class AdminLoginCaptcha
         $request->session()->put(self::SESSION_KEY, [
             'answer_hash' => hash_hmac('sha256', $answer, (string) config('app.key')),
             'expires_at' => now()->timestamp + self::LIFETIME_SECONDS,
-            'image' => base64_encode($this->renderImage($answer)),
+            // Keep the session small (cookie sessions cap at ~4 KB); the image is rendered on request.
+            'answer' => encrypt($answer),
         ]);
     }
 
@@ -78,9 +84,9 @@ class AdminLoginCaptcha
         $challenge = $request->session()->get(self::SESSION_KEY);
 
         return is_array($challenge)
-            && isset($challenge['answer_hash'], $challenge['expires_at'], $challenge['image'])
+            && isset($challenge['answer_hash'], $challenge['expires_at'], $challenge['answer'])
             && is_string($challenge['answer_hash'])
-            && is_string($challenge['image'])
+            && is_string($challenge['answer'])
             && (int) $challenge['expires_at'] > now()->timestamp;
     }
 
@@ -165,5 +171,55 @@ class AdminLoginCaptcha
         imagedestroy($image);
 
         return $png;
+    }
+
+    private function renderSvg(string $answer): string
+    {
+        $width = 184;
+        $height = 58;
+        $noiseColors = ['#bed3dc', '#cddee5', '#dce8ed'];
+        $textColors = ['#102a43', '#0f4c5c', '#21364c'];
+        $shapes = '';
+
+        for ($dot = 0; $dot < 115; $dot++) {
+            $shapes .= sprintf('<rect x="%d" y="%d" width="1" height="1" fill="%s"/>', random_int(0, $width - 1), random_int(0, $height - 1), $noiseColors[array_rand($noiseColors)]);
+        }
+
+        for ($line = 0; $line < 6; $line++) {
+            $shapes .= sprintf(
+                '<line x1="%d" y1="%d" x2="%d" y2="%d" stroke="%s" stroke-width="%d"/>',
+                random_int(0, $width - 1),
+                random_int(0, $height - 1),
+                random_int(0, $width - 1),
+                random_int(0, $height - 1),
+                $noiseColors[array_rand($noiseColors)],
+                random_int(1, 2)
+            );
+        }
+
+        $characters = str_split($answer);
+        $cellWidth = intdiv($width - 24, count($characters));
+
+        foreach ($characters as $index => $character) {
+            $x = 12 + ($index * $cellWidth) + random_int(-2, 2) + 12;
+            $y = random_int(38, 44);
+            $shapes .= sprintf(
+                '<text x="%d" y="%d" transform="rotate(%d %d %d)" fill="%s" font-family="monospace" font-size="30" font-weight="bold" text-anchor="middle">%s</text>',
+                $x,
+                $y,
+                random_int(-12, 12),
+                $x,
+                $y - 12,
+                $textColors[array_rand($textColors)],
+                $character
+            );
+        }
+
+        return sprintf(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="%1$d" height="%2$d" viewBox="0 0 %1$d %2$d"><rect width="100%%" height="100%%" fill="#f1f7fa"/>%3$s</svg>',
+            $width,
+            $height,
+            $shapes
+        );
     }
 }
