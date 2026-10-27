@@ -6,7 +6,8 @@
     "functions": {
         "api/index.php": {
             "runtime": "vercel-php@0.7.3",
-            "maxDuration": 30
+            "maxDuration": 30,
+            "excludeFiles": "{node_modules/**,public/storage/**,database/seeders/assets/**,tests/**}"
         }
     },
     "routes": [
